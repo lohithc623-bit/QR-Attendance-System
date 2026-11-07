@@ -1,0 +1,13 @@
+# Copy to local.properties (git-ignored) and fill in. Environment variables DB_URL / DB_USER /
+# DB_PASSWORD work too and take priority.
+db.url=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+db.user=root
+db.password=Lohith_2006
+
+# Mobile web app / API
+api.port=8443
+api.tls.keystore=keystore.p12
+api.tls.password=changeit
+
+# QR rotation window in seconds (a code is accepted for about 1-2 windows)
+qr.rotation.seconds=30

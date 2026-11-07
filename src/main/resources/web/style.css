@@ -1,0 +1,51 @@
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #0f172a; --muted: #64748b; --line: #e2e8f0;
+  --brand: #2563eb; --ok: #16a34a; --bad: #dc2626; --warn: #d97706;
+}
+:root[data-theme="dark"] {
+  --bg: #0b1220; --card: #111c33; --text: #e5e7eb; --muted: #94a3b8; --line: #23304d;
+  --brand: #60a5fa; --ok: #4ade80; --bad: #f87171; --warn: #fbbf24;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1220; --card: #111c33; --text: #e5e7eb; --muted: #94a3b8; --line: #23304d;
+    --brand: #60a5fa; --ok: #4ade80; --bad: #f87171; --warn: #fbbf24;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+header { display: flex; align-items: center; gap: .5rem; padding: .6rem 1rem; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.spacer { flex: 1; }
+main { max-width: 760px; margin: 0 auto; padding: 1rem; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 1rem; margin-bottom: 1rem; }
+h2, h3 { margin: 0 0 .6rem; }
+label { display: block; font-size: .85rem; color: var(--muted); margin: .6rem 0 .2rem; }
+input, select, button { font: inherit; border-radius: 10px; border: 1px solid var(--line); padding: .65rem .8rem; background: var(--bg); color: var(--text); width: 100%; min-height: 44px; }
+button { width: auto; cursor: pointer; background: var(--brand); color: #fff; border-color: transparent; font-weight: 600; }
+button.ghost { background: transparent; color: var(--text); border-color: var(--line); }
+button.danger { background: var(--bad); } button.ok { background: var(--ok); color: #04210f; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.row { display: flex; gap: .6rem; flex-wrap: wrap; } .row > * { flex: 1 1 140px; }
+.tabs { display: flex; gap: .4rem; margin-bottom: 1rem; } .tabs button { flex: 1; background: var(--card); color: var(--text); border: 1px solid var(--line); }
+.tabs button.active { background: var(--brand); color: #fff; }
+.muted { color: var(--muted); font-size: .9rem; } .err { color: var(--bad); min-height: 1.3em; }
+.center { text-align: center; }
+.qr { width: min(80vw, 300px); height: auto; image-rendering: pixelated; background: #fff; padding: 8px; border-radius: 12px; }
+.ring { --p: 0; --c: var(--ok); width: 120px; height: 120px; border-radius: 50%; margin: 0 auto .5rem; display: grid; place-items: center;
+  background: conic-gradient(var(--c) calc(var(--p) * 1%), var(--line) 0); }
+.ring span { background: var(--card); width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 1.3rem; }
+.bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; } .bar > div { height: 100%; background: var(--ok); }
+.bar.low > div { background: var(--bad); }
+.warn { color: var(--bad); font-weight: 600; font-size: .9rem; }
+.countdown { height: 6px; border-radius: 3px; background: var(--line); margin: .6rem auto; max-width: 300px; overflow: hidden; } .countdown > div { height: 100%; background: var(--brand); transition: width 1s linear; }
+table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: .5rem .3rem; border-bottom: 1px solid var(--line); font-size: .92rem; }
+.tablewrap { overflow-x: auto; }
+.pill { padding: .1rem .5rem; border-radius: 999px; font-size: .8rem; font-weight: 600; background: var(--line); }
+.pill.PRESENT { background: var(--ok); color: #04210f; } .pill.ABSENT { background: var(--bad); color: #fff; }
+.small { padding: .3rem .6rem; min-height: 34px; font-size: .85rem; }
+.stats { display: flex; gap: .6rem; margin: .6rem 0; } .stats div { flex: 1; text-align: center; padding: .5rem; border-radius: 10px; background: var(--bg); } .stats b { display: block; font-size: 1.4rem; }
+#reader { width: 100%; max-width: 420px; margin: 0 auto; border-radius: 12px; overflow: hidden; }
+#flash { position: fixed; inset: 0; pointer-events: none; display: grid; place-items: center; font-size: 1.4rem; font-weight: 700; text-align: center; padding: 2rem;
+  color: #fff; white-space: pre-line; opacity: 0; transition: opacity .15s; z-index: 50; } #flash.show { opacity: .95; }
+#flash.good { background: var(--ok); color: #04210f; } #flash.bad { background: var(--bad); }

@@ -1,0 +1,4 @@
+.root { -fx-base: #2b2f3a; -fx-background: #1d2029; -fx-control-inner-background: #262a35;
+        -fx-accent: #4c8dff; -fx-focus-color: #4c8dff; -fx-text-base-color: #e6e8ee; -fx-font-size: 13px; }
+.label { -fx-text-fill: #e6e8ee; }
+.table-row-cell:odd { -fx-background-color: #2a2e3a; }

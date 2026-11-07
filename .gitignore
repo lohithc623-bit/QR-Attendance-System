@@ -1,0 +1,3 @@
+local.properties
+*.p12
+target/
