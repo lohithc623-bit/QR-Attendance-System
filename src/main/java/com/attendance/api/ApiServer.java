@@ -18,6 +18,7 @@ import com.attendance.model.Student;
 import com.attendance.model.StudentAttendanceSummary;
 import com.attendance.model.Subject;
 import com.attendance.model.SubjectAttendanceSummary;
+import com.attendance.service.AdminService;
 import com.attendance.service.AttendanceService;
 import com.attendance.service.AuthService;
 import com.attendance.util.CsvUtil;
@@ -67,6 +68,7 @@ public class ApiServer {
 
     private final AuthService authService = new AuthService();
     private final AttendanceService attendance = new AttendanceService();
+    private final AdminService adminService = new AdminService();
     private final StudentDAO studentDAO = new StudentDAO();
 
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
@@ -135,6 +137,21 @@ public class ApiServer {
             login(ex);
             return;
         }
+        if (path.equals("/api/auth/google") && method.equals("POST")) {
+            googleLogin(ex);
+            return;
+        }
+        if (path.equals("/api/config/auth") && method.equals("GET")) {
+            sendJson(ex, 200, Map.of(
+                    "googleClientId", com.attendance.config.AppConfig.get("google.client.id", "")
+            ));
+            return;
+        }
+        if (path.equals("/api/system/limitations") && method.equals("GET")) {
+            systemLimitations(ex);
+            return;
+        }
+
         Session session = requireSession(ex);
 
         switch (path) {
@@ -153,6 +170,11 @@ public class ApiServer {
             case "/api/faculty/mark" -> facultyMark(ex, requireRole(session, Role.FACULTY));
             case "/api/faculty/finalize" -> facultyFinalize(ex, requireRole(session, Role.FACULTY));
             case "/api/faculty/report" -> facultyReport(ex, requireRole(session, Role.FACULTY));
+            case "/api/admin/overview" -> adminOverview(ex, requireRole(session, Role.ADMIN));
+            case "/api/admin/classes" -> adminClasses(ex, requireRole(session, Role.ADMIN));
+            case "/api/admin/faculty" -> adminFaculty(ex, requireRole(session, Role.ADMIN));
+            case "/api/admin/students" -> adminStudents(ex, requireRole(session, Role.ADMIN));
+            case "/api/admin/subjects" -> adminSubjects(ex, requireRole(session, Role.ADMIN));
             default -> throw new HttpError(404, "NOT_FOUND", "No such endpoint.");
         }
     }
@@ -168,9 +190,6 @@ public class ApiServer {
             role = Role.valueOf(str(body, "role").toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new HttpError(400, "BAD_REQUEST", "Unknown role.");
-        }
-        if (role == Role.ADMIN) {
-            throw new HttpError(403, "FORBIDDEN", "Administrator tasks are done in the desktop app.");
         }
 
         String key = username.toLowerCase();
@@ -206,6 +225,40 @@ public class ApiServer {
         out.put("name", s.name());
         sendJson(ex, 200, out);
     }
+
+    private void googleLogin(HttpExchange ex) throws Exception {
+        requirePost(ex);
+        Map<String, Object> body = readBody(ex);
+        String email = str(body, "email");
+        String roleStr = (String) body.get("role");
+        Role role = (roleStr != null && !roleStr.isBlank()) ? Role.valueOf(roleStr.toUpperCase()) : null;
+        String campusId = (String) body.get("campusId");
+
+        AuthService.LoginResult result;
+        try {
+            result = authService.loginWithGoogle(email, role, campusId);
+        } catch (AuthenticationException e) {
+            throw new HttpError(401, "AUTH", e.getMessage());
+        }
+
+        byte[] raw = new byte[32];
+        random.nextBytes(raw);
+        String token = java.util.HexFormat.of().formatHex(raw);
+        Session s = new Session(result.user.getId(), result.user.getRole(), result.user.getFullName(),
+                result.studentProfile == null ? null : result.studentProfile.getId(),
+                result.facultyProfile == null ? null : result.facultyProfile.getId(),
+                System.currentTimeMillis() + SESSION_TTL_MS);
+        sessions.put(token, s);
+        purgeExpired();
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("token", token);
+        out.put("role", result.user.getRole().name());
+        out.put("name", s.name());
+        out.put("email", email);
+        sendJson(ex, 200, out);
+    }
+
 
     private String bearer(HttpExchange ex) {
         String h = ex.getRequestHeaders().getFirst("Authorization");
@@ -417,11 +470,233 @@ public class ApiServer {
         sendJson(ex, 200, Map.of("report", rows));
     }
 
+    // ------------------------------------------------------------------ admin
+
+    private void adminOverview(HttpExchange ex, Session s) throws IOException {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("classesCount", adminService.listClasses().size());
+        out.put("subjectsCount", adminService.listSubjects().size());
+        out.put("facultyCount", adminService.listFaculty().size());
+        out.put("studentsCount", adminService.listStudents().size());
+        sendJson(ex, 200, out);
+    }
+
+    private void adminClasses(HttpExchange ex, Session s) throws Exception {
+        String method = ex.getRequestMethod();
+        if (method.equals("GET")) {
+            List<SchoolClass> list = adminService.listClasses();
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (SchoolClass c : list) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", c.getId());
+                m.put("className", c.getClassName());
+                m.put("department", c.getDepartment());
+                m.put("semester", c.getSemester());
+                m.put("section", c.getSection());
+                rows.add(m);
+            }
+            sendJson(ex, 200, Map.of("classes", rows));
+        } else if (method.equals("POST")) {
+            Map<String, Object> b = readBody(ex);
+            String className = str(b, "className");
+            String department = str(b, "department");
+            int semester = intParam(b, "semester");
+            String section = str(b, "section");
+            SchoolClass c = adminService.createClass(className, department, semester, section);
+            sendJson(ex, 200, Map.of("ok", true, "class", Map.of("id", c.getId(), "name", c.getClassName())));
+        } else if (method.equals("DELETE")) {
+            Map<String, String> q = query(ex);
+            int id = Integer.parseInt(q.getOrDefault("id", "0"));
+            if (id <= 0) throw new HttpError(400, "BAD_REQUEST", "Missing id");
+            adminService.deleteClass(id);
+            sendJson(ex, 200, Map.of("ok", true));
+        } else {
+            throw new HttpError(405, "METHOD", "Method not allowed");
+        }
+    }
+
+    private void adminFaculty(HttpExchange ex, Session s) throws Exception {
+        String method = ex.getRequestMethod();
+        if (method.equals("GET")) {
+            List<Faculty> list = adminService.listFaculty();
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (Faculty f : list) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", f.getId());
+                m.put("code", f.getFacultyCode());
+                m.put("name", f.getFullName());
+                m.put("department", f.getDepartment());
+                rows.add(m);
+            }
+            sendJson(ex, 200, Map.of("faculty", rows));
+        } else if (method.equals("POST")) {
+            Map<String, Object> b = readBody(ex);
+            String code = str(b, "code");
+            String name = str(b, "name");
+            String department = str(b, "department");
+            String password = str(b, "password");
+            Faculty f = adminService.createFaculty(code, name, department, password);
+            sendJson(ex, 200, Map.of("ok", true, "faculty", Map.of("id", f.getId(), "code", f.getFacultyCode())));
+        } else if (method.equals("DELETE")) {
+            Map<String, String> q = query(ex);
+            int id = Integer.parseInt(q.getOrDefault("id", "0"));
+            if (id <= 0) throw new HttpError(400, "BAD_REQUEST", "Missing id");
+            adminService.deleteFaculty(id);
+            sendJson(ex, 200, Map.of("ok", true));
+        } else {
+            throw new HttpError(405, "METHOD", "Method not allowed");
+        }
+    }
+
+    private void adminStudents(HttpExchange ex, Session s) throws Exception {
+        String method = ex.getRequestMethod();
+        if (method.equals("GET")) {
+            List<Student> list = adminService.listStudents();
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (Student st : list) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", st.getId());
+                m.put("registerNumber", st.getRegisterNumber());
+                m.put("name", st.getFullName());
+                m.put("department", st.getDepartment());
+                m.put("semester", st.getSemester());
+                m.put("section", st.getSection());
+                m.put("classId", st.getClassId());
+                rows.add(m);
+            }
+            sendJson(ex, 200, Map.of("students", rows));
+        } else if (method.equals("POST")) {
+            Map<String, Object> b = readBody(ex);
+            String regNo = str(b, "registerNumber");
+            String name = str(b, "name");
+            String department = str(b, "department");
+            int semester = intParam(b, "semester");
+            String section = str(b, "section");
+            int classId = intParam(b, "classId");
+            String password = str(b, "password");
+            Student st = adminService.createStudent(regNo, name, department, semester, section, classId, password);
+            sendJson(ex, 200, Map.of("ok", true, "student", Map.of("id", st.getId(), "registerNumber", st.getRegisterNumber())));
+        } else if (method.equals("DELETE")) {
+            Map<String, String> q = query(ex);
+            int id = Integer.parseInt(q.getOrDefault("id", "0"));
+            if (id <= 0) throw new HttpError(400, "BAD_REQUEST", "Missing id");
+            adminService.deleteStudent(id);
+            sendJson(ex, 200, Map.of("ok", true));
+        } else {
+            throw new HttpError(405, "METHOD", "Method not allowed");
+        }
+    }
+
+    private void adminSubjects(HttpExchange ex, Session s) throws Exception {
+        String method = ex.getRequestMethod();
+        if (method.equals("GET")) {
+            List<Subject> list = adminService.listSubjects();
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (Subject sub : list) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", sub.getId());
+                m.put("code", sub.getSubjectCode());
+                m.put("name", sub.getSubjectName());
+                m.put("classId", sub.getClassId());
+                m.put("facultyId", sub.getFacultyId());
+                rows.add(m);
+            }
+            sendJson(ex, 200, Map.of("subjects", rows));
+        } else if (method.equals("POST")) {
+            Map<String, Object> b = readBody(ex);
+            String code = str(b, "code");
+            String name = str(b, "name");
+            int classId = intParam(b, "classId");
+            int facultyId = intParam(b, "facultyId");
+            Subject sub = adminService.createSubject(code, name, classId, facultyId);
+            sendJson(ex, 200, Map.of("ok", true, "subject", Map.of("id", sub.getId(), "code", sub.getSubjectCode())));
+        } else if (method.equals("DELETE")) {
+            Map<String, String> q = query(ex);
+            int id = Integer.parseInt(q.getOrDefault("id", "0"));
+            if (id <= 0) throw new HttpError(400, "BAD_REQUEST", "Missing id");
+            adminService.deleteSubject(id);
+            sendJson(ex, 200, Map.of("ok", true));
+        } else {
+            throw new HttpError(405, "METHOD", "Method not allowed");
+        }
+    }
+
+    private void systemLimitations(HttpExchange ex) throws IOException {
+        List<Map<String, Object>> list = List.of(
+                Map.of(
+                        "id", "LIM-01",
+                        "category", "Security & Anti-Proxy",
+                        "severity", "MODERATE",
+                        "title", "Live Screen-Share / Remote Video Relay",
+                        "description", "Rotating QR codes (HMAC-SHA256 valid for 30s) eliminate static screenshot and printed proxy attendance. However, a student can theoretically stream their phone screen to a classmate via live video call in real time.",
+                        "mitigation", "Faculty supervise the scanning station in class. Future roadmap includes GPS geofencing and campus Wi-Fi BSSID verification."
+                ),
+                Map.of(
+                        "id", "LIM-02",
+                        "category", "Security & Anti-Proxy",
+                        "severity", "LOW",
+                        "title", "Camera Stream Spoofing",
+                        "description", "On laptop browsers, a malicious user could potentially hook a virtual webcam driver (e.g. OBS Virtual Camera) to feed pre-recorded frames.",
+                        "mitigation", "Mobile browser scanning enforces physical rear-facing cameras ('environment'). Hardware attestation can be added in production apps."
+                ),
+                Map.of(
+                        "id", "LIM-03",
+                        "category", "Architecture & Networking",
+                        "severity", "MODERATE",
+                        "title", "Hybrid Architecture (Desktop Direct JDBC vs Web REST API)",
+                        "description", "The JavaFX desktop application connects directly to MySQL via JDBC, while the mobile web application communicates via the REST API.",
+                        "mitigation", "Desktop is intended for local college workstation/server use. Desktop client can be migrated to REST API endpoints."
+                ),
+                Map.of(
+                        "id", "LIM-04",
+                        "category", "Architecture & Networking",
+                        "severity", "LOW",
+                        "title", "In-Memory Session Storage",
+                        "description", "Active bearer token sessions are maintained in ConcurrentHashMap server memory and reset when the server restarts.",
+                        "mitigation", "Lightweight and zero external dependencies for evaluation. Production deployments can use Redis or JWT signed tokens."
+                ),
+                Map.of(
+                        "id", "LIM-05",
+                        "category", "Hardware & Network",
+                        "severity", "MODERATE",
+                        "title", "HTTPS Requirement for Mobile Camera Access",
+                        "description", "Modern mobile browsers strictly enforce getUserMedia camera permissions on HTTPS (or localhost) only.",
+                        "mitigation", "System bundles PKCS12 keystore TLS support (api.tls.keystore) and LAN IP SAN certificates, with Cloudflare/ngrok reverse proxy support."
+                ),
+                Map.of(
+                        "id", "LIM-06",
+                        "category", "Academic & Functional",
+                        "severity", "LOW",
+                        "title", "Fixed 8-Period Timetable Model",
+                        "description", "Periods are constrained from 1 to 8, which fits typical university schedules but does not model flexible time durations or multi-period lab blocks.",
+                        "mitigation", "Input validation ensures data integrity. Variable duration slots can be introduced in schema v3."
+                ),
+                Map.of(
+                        "id", "LIM-07",
+                        "category", "Academic & Functional",
+                        "severity", "LOW",
+                        "title", "Single Faculty per Subject Offering",
+                        "description", "Each subject is currently assigned to one faculty member. Co-teaching or visiting faculty require administrator reassignment.",
+                        "mitigation", "Administrators can quickly reassign or edit faculty via Admin Dashboard."
+                ),
+                Map.of(
+                        "id", "LIM-08",
+                        "category", "Reporting & Data",
+                        "severity", "LOW",
+                        "title", "CSV Export vs Vector PDF Generation",
+                        "description", "Reports are exported in standard RFC 4180 CSV format (optimized for Microsoft Excel). Server-side PDF generation is omitted to keep fat JAR lightweight.",
+                        "mitigation", "Web interface includes print-optimized CSS layout for direct 'Save as PDF' via browser print."
+                )
+        );
+        sendJson(ex, 200, Map.of("limitations", list, "version", "2.1.0"));
+    }
+
     // ------------------------------------------------------------------ static files (the mobile web app)
 
     private static final Map<String, String> TYPES = Map.of(
             "html", "text/html; charset=utf-8", "js", "text/javascript; charset=utf-8",
             "css", "text/css; charset=utf-8", "svg", "image/svg+xml",
+            "png", "image/png", "ico", "image/x-icon",
             "webmanifest", "application/manifest+json");
 
     private void handleStatic(HttpExchange ex, String path) throws IOException {
@@ -429,7 +704,7 @@ public class ApiServer {
             throw new HttpError(405, "METHOD", "Method not allowed.");
         }
         String name = path.equals("/") ? "index.html" : path.substring(1);
-        if (!name.matches("[A-Za-z0-9_.-]+\\.(html|js|css|svg|webmanifest)")) {
+        if (!name.matches("[A-Za-z0-9_.-]+\\.(html|js|css|svg|webmanifest|png|ico)")) {
             throw new HttpError(404, "NOT_FOUND", "Not found.");
         }
         try (InputStream in = ApiServer.class.getResourceAsStream("/web/" + name)) {
@@ -440,9 +715,15 @@ public class ApiServer {
             Headers h = ex.getResponseHeaders();
             h.set("Content-Type", TYPES.get(name.substring(name.lastIndexOf('.') + 1)));
             h.set("X-Content-Type-Options", "nosniff");
-            h.set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://unpkg.com; "
-                    + "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; "
-                    + "worker-src 'self' blob:; connect-src 'self'");
+            h.set("Content-Security-Policy", "default-src 'self'; "
+                    + "script-src 'self' 'unsafe-inline' https://unpkg.com https://accounts.google.com; "
+                    + "frame-src 'self' https://accounts.google.com; "
+                    + "style-src 'self' 'unsafe-inline' https://accounts.google.com https://fonts.googleapis.com; "
+                    + "font-src 'self' https://fonts.gstatic.com; "
+                    + "img-src 'self' data: blob: https://*.googleusercontent.com https://accounts.google.com; "
+                    + "media-src 'self' blob:; "
+                    + "worker-src 'self' blob:; "
+                    + "connect-src 'self' https://accounts.google.com");
             if (name.equals("sw.js")) {
                 h.set("Cache-Control", "no-cache");
             }
@@ -452,6 +733,7 @@ public class ApiServer {
             }
         }
     }
+
 
     // ------------------------------------------------------------------ helpers
 

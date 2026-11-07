@@ -1,6 +1,6 @@
 // Caches only the static app shell so the page opens instantly / offline.
 // API calls are never cached: attendance data and QR codes must always be live.
-const CACHE = "qr-attendance-v2";
+const CACHE = "qr-attendance-v2.1";
 const SHELL = ["/", "/app.js", "/style.css", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {

@@ -11,3 +11,6 @@ api.tls.password=changeit
 
 # QR rotation window in seconds (a code is accepted for about 1-2 windows)
 qr.rotation.seconds=30
+
+# Optional Google SSO Client ID (from Google Cloud Console)
+# google.client.id=YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com

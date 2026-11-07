@@ -27,6 +27,10 @@ CSE203 (OOP using Java) mini project. Two front-ends share one set of business r
 | No warnings / charts | **Percentage ring**, per-subject progress bars, and a **below-75% warning** with "attend the next N classes in a row to recover". |
 | No export | **CSV export** of class and subject reports (desktop + web). Formula-injection safe, opens correctly in Excel. |
 | No dark mode / phone layout | Dark/light toggle (desktop and web); responsive mobile-first web UI. |
+| Basic UI / limited screens | **Modern Design System**: Polished glassmorphism cards, interactive rotating QR code, laser camera scanner reticle, fast demo login chips, and print-ready reports. |
+| No Google login option | **Google Single Sign-On (SSO)**: One-click Google campus account chooser and Google Identity Services integration with campus ID resolution. |
+| Admin restricted to desktop | **Web Admin Dashboard**: Manage classes, faculty, students, and subjects directly in the web browser. |
+| Undocumented constraints | **System Limitations Explorer**: In-app audit modal & comprehensive academic defense guide in [LIMITATIONS.md](LIMITATIONS.md). |
 
 Also fixed while in there: a faculty member could previously mark attendance for **any** subject - the service now checks the subject really belongs to that faculty and class; future dates and periods outside 1-8 are rejected; the fat jar now starts correctly (`Launcher` class).
 
@@ -126,11 +130,15 @@ database/                 schema.sql, migration_v1_to_v2.sql, create_app_user.sq
 3. Faculty: choose a period, click **Live camera scan**, scan the student → green banner + beep, roster updates.
 4. Scan a **screenshot taken a few minutes ago** → "expired" (the rotating-QR point).
 5. Scan the same live code twice → "already marked". Scan a student from another class → class mismatch.
-6. **Override** one student, then **Finish session** → the rest become absent. Export the report to CSV.
+6. **Override** one student, then **Finish session** → the rest become absent. Export the report to CSV or print to PDF.
+7. Click **System Limitations**: inspect real-time technical audit and threat mitigations directly in the UI.
 
-## Known limits (honest notes)
+## System Limitations (Honest Notes)
 
-* The **desktop app still connects to MySQL directly** (fine for a lab PC that also hosts MySQL). Phones and any remote client go through the API only. Moving the desktop screens onto the API is the next step if you want a fully client/server desktop too.
-* The API's login sessions are kept in server memory (they reset when the server restarts); there is no admin API yet.
-* Rotating QRs stop screenshots, but a student could still send a *live* QR to a friend in real time. Pair it with faculty watching the room (or geo/Wi-Fi checks) for stricter control.
-* Reports export to CSV (open in Excel); PDF export is not included.
+For the complete, publication-grade academic analysis and viva defense guide, see [LIMITATIONS.md](LIMITATIONS.md):
+
+* **Hybrid Architecture**: The desktop app still connects to MySQL directly (suitable for a closed lab PC); phones and remote browsers access the system strictly via the HTTPS REST API.
+* **In-Memory Session Store**: Web sessions are maintained in server memory (`ConcurrentHashMap`) for zero external dependencies; a server restart clears active sessions.
+* **Live Video Relay Constraint**: Rotating QR codes stop static screenshots and printed photos. However, an absent student streaming their live screen via video call to a classmate requires physical faculty supervision or GPS geofencing (planned for v3).
+* **Reporting Format**: Direct RFC 4180 CSV export (Excel) and print-optimized PDF view via browser print; server-side vector PDF generation is omitted to keep JAR footprint lightweight.
+
